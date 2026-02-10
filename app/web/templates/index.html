@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RAG Chatbot</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #e0f7fa, #80deea);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 30px;
+        min-height: 100vh;
+    }
+
+    h1 {
+        margin-bottom: 20px;
+        color: #00796b;
+        text-shadow: 1px 1px 2px #004d40;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .logo {
+        width: 50px;
+        height: 50px;
+        background: url('https://i.imgur.com/6Y2L6Wp.png') no-repeat center/contain;
+        animation: spin 3s linear infinite;
+    }
+
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    #chatbox {
+        width: 100%;
+        max-width: 600px;
+        border-radius: 15px;
+        padding: 20px;
+        height: 500px;
+        overflow-y: auto;
+        background: #ffffff;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        scroll-behavior: smooth;
+    }
+
+    .message {
+        display: flex;
+        align-items: flex-end;
+        padding: 10px 15px;
+        border-radius: 20px;
+        max-width: 80%;
+        animation: pop 0.3s ease forwards;
+        position: relative;
+        gap: 10px;
+    }
+
+    @keyframes pop {
+        from { transform: scale(0.8); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+    }
+
+    .user { 
+        align-self: flex-end;
+        background: linear-gradient(120deg, #00796b, #004d40);
+        color: #fff;
+        border-bottom-right-radius: 0;
+    }
+
+    .bot { 
+        align-self: flex-start;
+        background: linear-gradient(120deg, #b2dfdb, #004d40);
+        color: #fff;
+        border-bottom-left-radius: 0;
+    }
+
+    .avatar {
+        width: 35px;
+        height: 35px;
+        border-radius: 50%;
+        background-size: cover;
+    }
+
+    .user .avatar { background: url('https://i.imgur.com/8Km9tLL.png') center/cover; } /* user avatar */
+    .bot .avatar { background: url('https://i.imgur.com/1Q9Z1Zx.png') center/cover; } /* bot avatar */
+
+    /* Typing indicator */
+    .typing {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .typing-dot {
+        width: 8px;
+        height: 8px;
+        background: #004d40;
+        border-radius: 50%;
+        animation: bounce 1s infinite alternate;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+        from { transform: translateY(0); }
+        to { transform: translateY(-6px); }
+    }
+
+    #inputForm {
+        margin-top: 15px;
+        display: flex;
+        width: 100%;
+        max-width: 600px;
+        gap: 0;
+    }
+
+    #inputForm input {
+        flex: 1;
+        padding: 12px 15px;
+        font-size: 16px;
+        border: 2px solid #00796b;
+        border-radius: 25px 0 0 25px;
+        outline: none;
+    }
+
+    #inputForm button {
+        padding: 12px 20px;
+        font-size: 16px;
+        border: none;
+        background: #00796b;
+        color: white;
+        cursor: pointer;
+        border-radius: 0 25px 25px 0;
+        transition: background 0.3s ease;
+    }
+
+    #inputForm button:hover { background: #004d40; }
+
+    #chatbox::-webkit-scrollbar { width: 8px; }
+    #chatbox::-webkit-scrollbar-thumb { background: #00796b; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1><div class="logo"></div> RAG Chatbot</h1>
+<div id="chatbox"></div>
+<form id="inputForm">
+    <input type="text" id="userInput" placeholder="Ask me anything..." required />
+    <button type="submit">Send</button>
+</form>
+
+<script>
+const form = document.getElementById("inputForm");
+const input = document.getElementById("userInput");
+const chatbox = document.getElementById("chatbox");
+
+function appendMessage(sender, text) {
+    const div = document.createElement("div");
+    div.className = "message " + sender;
+
+    // Add avatar
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+
+    const msgContent = document.createElement("span");
+    msgContent.textContent = text;
+
+    if(sender === "user") {
+        div.appendChild(msgContent);
+        div.appendChild(avatar);
+    } else {
+        div.appendChild(avatar);
+        div.appendChild(msgContent);
+    }
+
+    chatbox.appendChild(div);
+    chatbox.scrollTop = chatbox.scrollHeight;
+}
+
+function showTyping() {
+    const typingDiv = document.createElement("div");
+    typingDiv.className = "typing";
+    typingDiv.innerHTML = `<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>`;
+    chatbox.appendChild(typingDiv);
+    chatbox.scrollTop = chatbox.scrollHeight;
+    return typingDiv;
+}
+
+form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const question = input.value.trim();
+    if(!question) return;
+
+    appendMessage("user", question);
+    input.value = "";
+
+    const typingIndicator = showTyping();
+
+    try {
+        const response = await fetch("/ask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question })
+        });
+
+        chatbox.removeChild(typingIndicator);
+
+        if(!response.ok) throw new Error("Network response was not ok");
+
+        const data = await response.json();
+        appendMessage("bot", data.answer || "Sorry, I don't know that.");
+    } catch(err) {
+        chatbox.removeChild(typingIndicator);
+        appendMessage("bot", "Error: Could not get answer.");
+        console.error(err);
+    }
+});
+</script>
+</body>
+</html>
